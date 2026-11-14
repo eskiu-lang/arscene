@@ -13,3 +13,5 @@ All notable changes to this package are documented here. The format follows
 - `ArPlacer`: tap to place (ViroARPlaneSelector): translucent planes, a ring at the middle of
   the view, placement facing the user at a scale, a shadow-catching floor, kinds of surface.
 - `ArMarkers`: nodes on tracked images with found and lost events (ViroARImageMarker).
+- `ArWorldMesh`: the LiDAR reconstruction as scene nodes, invisible occluders by default or
+  shown in a color.

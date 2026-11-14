@@ -1,0 +1,133 @@
+// world.esk: the real world's mesh in the scene (`<arscene/world>`), ViroReact's world mesh:
+// each piece eskiu-lang/ar reconstructs (LiDAR, ArOptions.mesh) as a node of the scene, an
+// invisible occluder by default (virtual content goes behind real walls and furniture) or a
+// translucent surface to see what the device has mapped. A piece is rebuilt only when the
+// session updates it.
+
+import <mem>;
+import <list>;
+import <result>;
+import <gpu>;
+import <gpu/math>;
+import <ar>;
+import <scene>;
+import <arscene>;
+
+struct _ArMeshNode {
+    int64 id;
+    int node;
+    int mesh;
+    *uint8 seen_vertices;
+    int seen_count;
+    int seen_faces;
+    bool here;
+}
+
+// The world's mesh in a scene. show draws it in color (to see what was mapped) instead of
+// as an occluder; occlude (on) hides virtual content behind it.
+struct ArWorldMesh {
+    bool occlude;
+    bool show;
+    Vec4 color;
+    List<_ArMeshNode> _nodes;
+    int _occluder;
+    int _visible;
+}
+
+// The world's mesh for scene: occluding, not shown.
+ArWorldMesh ar_world_mesh(*Scene scene) {
+    ArWorldMesh w;
+    w.occlude = true;
+    w.color = Vec4{0.3, 0.8, 1.0, 0.35};
+    SceneMaterial o = scene_material(SCENE_CONSTANT);
+    o.no_color_write = true;
+    o.double_sided = true;
+    w._occluder = scene.add_material(o);
+    SceneMaterial v = scene_material(SCENE_CONSTANT);
+    v.diffuse = w.color;
+    v.alpha_mode = SCENE_ALPHA_BLEND;
+    v.double_sided = true;
+    v.skip_depth_write = true;
+    w._visible = scene.add_material(v);
+    return w;
+}
+
+SceneGeometry _arw_geometry(*ArMesh m) {
+    SceneGeometry g = scene_geometry((uint32)m.vertex_count, (uint32)(m.face_count * 3));
+    for (i in 0..m.vertex_count) {
+        ArVec3 p = m.vertex(i);
+        ArVec3 n = m.normals != null ? m.normal(i) : ArVec3{0.0, 1.0, 0.0};
+        g.set((uint32)i, Vec3{p.x, p.y, p.z}, Vec3{n.x, n.y, n.z}, Vec2{0.0, 0.0});
+    }
+    for (k in 0..m.face_count * 3) {
+        int idx = m.index(k);
+        g.indices[k] = idx >= 0 && idx < m.vertex_count ? (uint32)idx : 0;
+    }
+    g.bounds();
+    return g;
+}
+
+// Brings the scene's pieces up to frame's meshes: new pieces added, updated ones rebuilt,
+// gone ones hidden.
+Result<int, string> ArWorldMesh_frame(*ArWorldMesh self, *Scene scene, *ArFrame frame) {
+    scene.material(self._visible).diffuse = self.color;
+    for (i in 0..self._nodes.size) self._nodes.data[i].here = false;
+    for (i in 0..frame.mesh_count) {
+        *ArMesh m = &frame.meshes[i];
+        int at = -1;
+        for (k in 0..self._nodes.size) {
+            if (self._nodes.data[k].id == m.id) at = k;
+        }
+        bool changed = at < 0 || self._nodes.data[at].seen_vertices != m.vertices || self._nodes.data[at].seen_count != m.vertex_count ||
+            self._nodes.data[at].seen_faces != m.face_count;
+        if (changed) {
+            SceneGeometry g = _arw_geometry(m);
+            if (at < 0) {
+                _ArMeshNode n;
+                n.id = m.id;
+                Result<int, string> mr = scene.add_geometry(&g);
+                if (!mr.ok) {
+                    g.free();
+                    return Err<int, string>(mr.error);
+                }
+                n.mesh = mr.value;
+                n.node = scene.add_object(0, n.mesh, self._occluder);
+                scene.node(n.node).ignore_events = true;
+                scene.node(n.node).casts_shadows = false;
+                List_push(&self._nodes, n);
+                at = self._nodes.size - 1;
+            } else if (!scene.set_geometry(self._nodes.data[at].mesh, &g)) {
+                Result<int, string> mr = scene.add_geometry(&g);
+                if (mr.ok) {
+                    self._nodes.data[at].mesh = mr.value;
+                    scene.node(self._nodes.data[at].node).mesh = mr.value;
+                }
+            }
+            g.free();
+            self._nodes.data[at].seen_vertices = m.vertices;
+            self._nodes.data[at].seen_count = m.vertex_count;
+            self._nodes.data[at].seen_faces = m.face_count;
+        }
+        self._nodes.data[at].here = true;
+        *SceneNode n = scene.node(self._nodes.data[at].node);
+        scene_decompose(ar_to_mat4(m.pose), &n.position, &n.rotation, &n.scale);
+    }
+    for (i in 0..self._nodes.size) {
+        *SceneNode n = scene.node(self._nodes.data[i].node);
+        n.visible = self._nodes.data[i].here && (self.occlude || self.show);
+        n.material = self.show ? self._visible : self._occluder;
+        // occluders first, so what they hide fails the depth test
+        n.rendering_order = self.show ? 0 : -100;
+    }
+    return Ok<int, string>(0);
+}
+
+// The number of pieces in the scene.
+int ArWorldMesh_count(*ArWorldMesh self) {
+    return self._nodes.size;
+}
+
+// Frees the list (the nodes stay in the scene).
+void ArWorldMesh_free(*ArWorldMesh self) {
+    self._nodes.free();
+}

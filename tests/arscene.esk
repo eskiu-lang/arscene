@@ -13,6 +13,7 @@ import <scene>;
 import <arscene>;
 import <arscene/placer>;
 import <arscene/markers>;
+import <arscene/world>;
 
 int fails = 0;
 
@@ -40,6 +41,8 @@ void ar_native_session(int on, int flags, int width, int height) {}
 int ar_native_frame_acquire(*int64 image, *double camera) { return 0; }
 void ar_native_frame_release() {}
 int ar_native_plane_count() { return 0; }
+int ar_native_mesh_count() { return 0; }
+void ar_native_mesh(int index, *double info) {}
 int ar_native_plane(int index, *double info, *float polygon, int max_points) { return -1; }
 int ar_native_anchor_count() { return 0; }
 void ar_native_anchor(int index, *double info) {}
@@ -186,6 +189,33 @@ Result<int, string> run() {
     f.image_count = 0;
     markers.frame(&scene, &f);
     check("a lost image hides it", !scene.node(on_image).visible && lost == 1);
+
+    // the world's mesh: a wall piece 2 m ahead, as an occluder, then shown, then updated
+    float[12] wv = {-1.0, -1.0, -2.0, 1.0, -1.0, -2.0, 1.0, 1.0, -2.0, -1.0, 1.0, -2.0};
+    float[12] wn = {0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0};
+    uint32[6] wf = {0, 1, 2, 0, 2, 3};
+    ArMesh[1] pieces;
+    pieces[0] = ArMesh{id: 42, pose: ar_mat4_identity(), vertices: (*uint8)&wv[0], vertex_count: 4, vertex_stride: 12,
+        normals: (*uint8)&wn[0], normal_stride: 12, faces: (*uint8)&wf[0], face_count: 2, index_bytes: 4};
+    f.meshes = &pieces[0];
+    f.mesh_count = 1;
+    ArWorldMesh world = ar_world_mesh(&scene);
+    defer world.free();
+    world.frame(&scene, &f)?;
+    int piece = world._nodes.data[0].node;
+    *SceneMesh pm = &scene.meshes.data[world._nodes.data[0].mesh];
+    check("a piece for the mesh, an occluder drawn first", world.count() == 1 && scene.node(piece).visible &&
+        scene.material(scene.node(piece).material).no_color_write && scene.node(piece).rendering_order < 0);
+    check("its bounds", near(pm.min.x, -1.0, 1e-5) && near(pm.max.y, 1.0, 1e-5) && near(pm.min.z, -2.0, 1e-5));
+    world.show = true;
+    world.frame(&scene, &f)?;
+    check("shown in color", !scene.material(scene.node(piece).material).no_color_write);
+    int mesh_before = world._nodes.data[0].mesh;
+    world.frame(&scene, &f)?;
+    check("unchanged, not rebuilt", world._nodes.data[0].mesh == mesh_before && world.count() == 1);
+    f.mesh_count = 0;
+    world.frame(&scene, &f)?;
+    check("a piece gone is hidden", !scene.node(piece).visible);
     scene.camera_background = 0;
     scene.occlusion_depth = 0;
     return Ok<int, string>(0);

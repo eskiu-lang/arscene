@@ -32,6 +32,8 @@ for an app:
   kinds of surface (floor, table, wall...).
 - **ArMarkers.** Content on tracked images, as `ViroARImageMarker`, with found and lost
   events.
+- **ArWorldMesh.** The room as LiDAR reconstructs it, as invisible occluders (or shown, to see
+  what was mapped).
 
 ```eskiu
 ArStage stage = ar_stage(&scene, cam)?;

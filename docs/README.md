@@ -43,6 +43,16 @@ its image's pose and shows it while the image is tracked (or last known, with
 `keep_last_known`), and hides it otherwise. `ArMarkers_on_change` is told each image found and
 lost.
 
+## The world's mesh
+
+With `ArOptions.mesh` (LiDAR devices) the session reconstructs the room as triangle meshes.
+`ar_world_mesh(&scene)`, then `ArWorldMesh_frame(&scene, frame)` each frame, keeps a node per
+piece of that mesh, rebuilt only when the session updates the piece and hidden when it goes
+away. By default the pieces are invisible occluders drawn before everything else, so virtual
+content goes behind real walls and furniture even where the depth image does not reach;
+`show` draws them in `color` instead, to see what the device has mapped, and `occlude = false`
+leaves them out.
+
 ## Tests
 
 `tests/arscene.esk` runs with no device: frames built by hand and stand-ins for ar's native
