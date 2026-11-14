@@ -15,3 +15,4 @@ All notable changes to this package are documented here. The format follows
 - `ArMarkers`: nodes on tracked images with found and lost events (ViroARImageMarker).
 - `ArWorldMesh`: the LiDAR reconstruction as scene nodes, invisible occluders by default or
   shown in a color.
+- `ArStage` passes the session's scene semantics to the scene, for semantic masks.

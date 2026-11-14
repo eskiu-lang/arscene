@@ -146,6 +146,13 @@ Result<int, string> run() {
     check("the camera at the device's pose", near(w.m[12], want.m[12], 1e-4) && near(w.m[13], want.m[13], 1e-4) && near(w.m[14], want.m[14], 1e-4));
     check("the session's projection", scene.camera(cam).projection == SCENE_CUSTOM);
     check("the depth image for occlusion", scene.occlusion_depth > 0);
+    uint8[8] labels = {1, 1, 1, 1, 2, 2, 2, 2};
+    f.semantics = ArSemantics{width: 4, height: 2, labels: &labels[0]};
+    stage.frame(&scene, &f, 16, 16)?;
+    check("the semantics for masks", scene.semantic_texture > 0 && scene.semantic_confidence_texture == 0);
+    f.semantics = ArSemantics{};
+    stage.frame(&scene, &f, 16, 16)?;
+    check("no semantics, no textures", scene.semantic_texture == 0);
     stage.occlusion = false;
     stage.frame(&scene, &f, 16, 16)?;
     check("occlusion off", scene.occlusion_depth == 0);

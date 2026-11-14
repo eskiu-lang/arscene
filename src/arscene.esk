@@ -32,7 +32,8 @@ Mat4 ar_to_mat4(ArMat4 m) {
 
 // What ArStage_frame does with each frame: the camera picture as the background, the
 // device's pose and projection for the scene's camera (near and far in meters), the real
-// world's depth for occlusion (when the session gives depth), and the light estimate.
+// world's depth for occlusion (when the session gives depth), the scene semantics for
+// semantic masks (when the session gives them), and the light estimate.
 struct ArStage {
     int camera;
     float near;
@@ -50,6 +51,11 @@ struct ArStage {
     int _depth_w;
     int _depth_h;
     *float _meters;
+    GpuTexture _labels;
+    GpuTexture _confidence;
+    bool _has_labels;
+    int _labels_w;
+    int _labels_h;
 }
 
 // A stage for scene's camera node `camera` (made with Scene_add_camera), with near 0.02 m,
@@ -69,7 +75,7 @@ Result<ArStage, string> ar_stage(*Scene scene, int camera) {
 // Takes frame into scene for a view of width x height pixels: draws the camera picture,
 // fitted to the view as the projection assumes, into the scene's camera_background; puts the
 // camera node at the device's pose with the session's projection; uploads the depth image as
-// the scene's occlusion depth.
+// the scene's occlusion depth; uploads the scene semantics as the scene's semantic textures.
 Result<int, string> ArStage_frame(*ArStage self, *Scene scene, *ArFrame frame, uint32 width, uint32 height) {
     if (width == 0 || height == 0) return Ok<int, string>(0);
     float w = (float)width;
@@ -103,6 +109,52 @@ Result<int, string> ArStage_frame(*ArStage self, *Scene scene, *ArFrame frame, u
     self.light = frame.light;
     if (self.occlusion) _ar_stage_depth(self, scene, frame, w, h)?;
     else scene.occlusion_depth = 0;
+    _ar_stage_semantics(self, scene, frame, w, h)?;
+    return Ok<int, string>(0);
+}
+
+// The view's coordinates to the camera picture's, which depth and semantics line up with.
+Mat4 _ar_stage_view_to_picture(*ArFrame frame, float w, float h) {
+    ArAffine a = frame.display_transform(w, h);
+    Mat4 m = mat4_identity();
+    m.m[0] = a.a;
+    m.m[1] = a.b;
+    m.m[4] = a.c;
+    m.m[5] = a.d;
+    m.m[12] = a.tx;
+    m.m[13] = a.ty;
+    return m;
+}
+
+Result<int, string> _ar_stage_semantics(*ArStage self, *Scene scene, *ArFrame frame, float w, float h) {
+    *ArSemantics sem = &frame.semantics;
+    if (sem.labels == null || sem.width <= 0 || sem.height <= 0) {
+        scene.semantic_texture = 0;
+        scene.semantic_confidence_texture = 0;
+        return Ok<int, string>(0);
+    }
+    if (!self._has_labels || self._labels_w != sem.width || self._labels_h != sem.height) {
+        if (self._has_labels) {
+            self._labels.release();
+            self._confidence.release();
+        }
+        GpuTextureDesc ld = GpuTextureDesc{width: (uint32)sem.width, height: (uint32)sem.height, format: WGPUTextureFormat_R8Unorm,
+            usage: WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst};
+        self._labels = scene.gpu.texture_with(&ld)?;
+        self._confidence = scene.gpu.texture_with(&ld)?;
+        self._has_labels = true;
+        self._labels_w = sem.width;
+        self._labels_h = sem.height;
+    }
+    self._labels.write_level(0, 0, sem.labels)?;
+    scene.semantic_texture = scene.borrow_texture(scene.semantic_texture, &self._labels);
+    if (sem.confidence != null) {
+        self._confidence.write_level(0, 0, sem.confidence)?;
+        scene.semantic_confidence_texture = scene.borrow_texture(scene.semantic_confidence_texture, &self._confidence);
+    } else {
+        scene.semantic_confidence_texture = 0;
+    }
+    scene.semantic_transform = _ar_stage_view_to_picture(frame, w, h);
     return Ok<int, string>(0);
 }
 
@@ -128,16 +180,7 @@ Result<int, string> _ar_stage_depth(*ArStage self, *Scene scene, *ArFrame frame,
     }
     self._depth.write_level(0, 0, self._meters)?;
     scene.occlusion_depth = scene.borrow_texture(scene.occlusion_depth, &self._depth);
-    // the view's coordinates to the picture's, which the depth image lines up with
-    ArAffine a = frame.display_transform(w, h);
-    Mat4 m = mat4_identity();
-    m.m[0] = a.a;
-    m.m[1] = a.b;
-    m.m[4] = a.c;
-    m.m[5] = a.d;
-    m.m[12] = a.tx;
-    m.m[13] = a.ty;
-    scene.occlusion_transform = m;
+    scene.occlusion_transform = _ar_stage_view_to_picture(frame, w, h);
     return Ok<int, string>(0);
 }
 
@@ -148,6 +191,11 @@ void ArStage_release(*ArStage self) {
     if (self._has_picture) self._picture.release();
     if (self._has_depth) self._depth.release();
     if (self._meters != null) free(self._meters);
+    if (self._has_labels) {
+        self._labels.release();
+        self._confidence.release();
+    }
+    self._has_labels = false;
     self._has_yuv = false;
     self._has_picture = false;
     self._has_depth = false;

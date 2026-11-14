@@ -21,6 +21,12 @@ frame needs on the GPU. `ArStage_frame(&scene, frame, width, height)`, called in
   view to the picture, so virtual content behind a real surface is hidden;
 - keeps the frame's light estimate in `stage.light`, to scale the scene's lights by.
 
+## Semantics
+
+When the session gives scene semantics (`ArOptions.semantics`, ARCore on Android), the stage
+uploads them as the scene's semantic textures with their mapping to the view, so materials
+with `scene_semantic_mask` show or hide by what the camera sees (sky, buildings, people...).
+
 ## Placing
 
 `ar_placer(&scene, content)` hides `content` (a node holding what to place) until it is

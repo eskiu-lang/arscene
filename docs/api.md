@@ -51,7 +51,8 @@ struct ArStage {
 
 What ArStage_frame does with each frame: the camera picture as the background, the
 device's pose and projection for the scene's camera (near and far in meters), the real
-world's depth for occlusion (when the session gives depth), and the light estimate.
+world's depth for occlusion (when the session gives depth), the scene semantics for
+semantic masks (when the session gives them), and the light estimate.
 
 ### ar_stage
 
@@ -72,7 +73,7 @@ Result<int, string> ArStage_frame(*ArStage self, *Scene scene, *ArFrame frame, u
 Takes frame into scene for a view of width x height pixels: draws the camera picture,
 fitted to the view as the projection assumes, into the scene's camera_background; puts the
 camera node at the device's pose with the session's projection; uploads the depth image as
-the scene's occlusion depth.
+the scene's occlusion depth; uploads the scene semantics as the scene's semantic textures.
 
 ### ArStage_release
 
