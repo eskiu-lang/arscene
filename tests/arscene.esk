@@ -61,6 +61,11 @@ int ar_native_earth(*double info) { return 0; }
 double ar_native_vps_check(double lat, double lng) { return 0.0; }
 void ar_native_objects(int count) {}
 int ar_native_object_add(int index, string path) { return 0; }
+int ar_native_face_count() { return 0; }
+void ar_native_face(int index, *double info) {}
+int ar_native_body_count() { return 0; }
+void ar_native_body(int index, *double info) {}
+int ar_native_body_joint(int joint, *char name, int capacity) { return -2; }
 int ar_native_tracked_object_count() { return 0; }
 void ar_native_tracked_object(int index, *double info) {}
 int ar_native_semantics(*int64 info) { return 0; }
