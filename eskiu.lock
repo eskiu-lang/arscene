@@ -2,6 +2,6 @@
 ar	path	../eskiu-ar
 arscene	root	.
 font	git	https://github.com/eskiu-lang/font	v0.1.0	656a3d0bc678b88c8e57c496408fb63664c64fe1
-gpu	git	https://github.com/eskiu-lang/gpu	v0.6.0	4eeb6243411bf5017f08839bc4833bfabdc4ec93
+gpu	git	https://github.com/eskiu-lang/gpu	631b4a8fee86fc4378c30cdb774f3c207f5ae521	631b4a8fee86fc4378c30cdb774f3c207f5ae521
 scene	path	../eskiu-scene
 ui	git	https://github.com/eskiu-lang/ui	v0.5.0	2a87c09abf9a6c8cf83189c7acf9a98fa69b99ad

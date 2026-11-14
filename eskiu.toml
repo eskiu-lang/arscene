@@ -5,5 +5,5 @@ version = "0.1.0"
 [deps]
 ar = { path = "../eskiu-ar" }
 scene = { path = "../eskiu-scene" }
-gpu = { path = "../eskiu-gpu" }
+gpu = { git = "https://github.com/eskiu-lang/gpu", rev = "631b4a8fee86fc4378c30cdb774f3c207f5ae521" }
 ui = { git = "https://github.com/eskiu-lang/ui", rev = "v0.5.0" }
