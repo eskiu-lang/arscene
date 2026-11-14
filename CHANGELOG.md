@@ -16,3 +16,5 @@ All notable changes to this package are documented here. The format follows
 - `ArWorldMesh`: the LiDAR reconstruction as scene nodes, invisible occluders by default or
   shown in a color.
 - `ArStage` passes the session's scene semantics to the scene, for semantic masks.
+- Physics against the real world: `ArWorldMesh.physics` (a body per LiDAR piece) and
+  `ArDepthCollider` / `ar_depth_triangles` (the depth image as a triangle body).

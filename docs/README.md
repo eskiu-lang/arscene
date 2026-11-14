@@ -60,6 +60,17 @@ content goes behind real walls and furniture even where the depth image does not
 leaves them out. The pieces hang from `root` (the scene's root by default), for a scene whose
 space is not the session's.
 
+## Physics against the real world
+
+With LiDAR, set `ArWorldMesh.physics` to a `ScenePhysicsWorld`: each piece of the room's mesh
+becomes a kinematic body of it (tagged `tag`, "world" by default), rebuilt when the session
+updates the piece and removed when it goes, so a dropped ball lands on the real floor and
+bounces off the real sofa. Without LiDAR, `ar_depth_collider(&scene)` and
+`ArDepthCollider_frame(&scene, &world, frame)` keep the depth image (ARCore's Depth API or a
+depth model) as a static triangle body, rebuilt every `every` frames (15) from a grid every
+`step` depth pixels (4), cells across depth jumps of more than `max_jump` (10%) left out;
+`ar_depth_triangles` gives those triangles.
+
 ## Tests
 
 `tests/arscene.esk` runs with no device: frames built by hand and stand-ins for ar's native

@@ -1,0 +1,123 @@
+// collide.esk: the real world as something to collide with (`<arscene/collide>`), for devices
+// without LiDAR's world mesh: the depth image (LiDAR, ARCore's Depth API, or a depth model)
+// turned into a triangle mesh in the world and kept as a static body, rebuilt as the session
+// sees more (ViroReact's physics against the depth mesh). With LiDAR, ArWorldMesh.physics does
+// the same from the reconstruction.
+
+import <mem>;
+import <list>;
+import <gpu/math>;
+import <ar>;
+import <scene>;
+import <scene/physics>;
+import <arscene>;
+
+// The depth image as world triangles into out (three corners each): a grid every `step`
+// depth pixels, two triangles a cell, a cell left out where the depth is unknown or jumps
+// by more than max_jump of itself (an object's edge, not a surface). The count of corners.
+int ar_depth_triangles(*ArFrame frame, int step, float max_jump, *List<Vec3> out) {
+    List_clear(out);
+    *ArDepth d = &frame.depth;
+    *ArIntrinsics k = &frame.intrinsics;
+    if (d.data == null || d.width < 2 || d.height < 2 || !(k.fx > 0.0)) return 0;
+    if (step < 1) step = 1;
+    int gw = (d.width - 1) / step + 1;
+    int gh = (d.height - 1) / step + 1;
+    *Vec3 grid = alloc<Vec3>(gw * gh);
+    defer free((*void)grid);
+    *float depth = alloc<float>(gw * gh);
+    defer free((*void)depth);
+    for (gy in 0..gh) {
+        for (gx in 0..gw) {
+            int x = gx * step;
+            int y = gy * step;
+            float m = d.meters(x, y);
+            depth[gy * gw + gx] = m;
+            if (!(m > 0.0)) continue;
+            // the depth pixel's center in picture pixels, then back through the intrinsics
+            double u = ((double)x + 0.5) * (double)k.width / (double)d.width;
+            double v = ((double)y + 0.5) * (double)k.height / (double)d.height;
+            ArVec3 c = ArVec3{(float)((u - (double)k.cx) / (double)k.fx * (double)m), (float)(-(v - (double)k.cy) / (double)k.fy * (double)m), -m};
+            ArVec3 w = ar_mat4_point(frame.camera, c);
+            grid[gy * gw + gx] = Vec3{w.x, w.y, w.z};
+        }
+    }
+    for (gy in 0..gh - 1) {
+        for (gx in 0..gw - 1) {
+            int a = gy * gw + gx;
+            int b = a + 1;
+            int c = a + gw;
+            int e = c + 1;
+            float lo = depth[a];
+            float hi = depth[a];
+            int[4] at = {a, b, c, e};
+            bool ok = true;
+            for (q in 0..4) {
+                float z = depth[at[q]];
+                if (!(z > 0.0)) ok = false;
+                if (z < lo) lo = z;
+                if (z > hi) hi = z;
+            }
+            if (!ok || hi - lo > max_jump * lo) continue;
+            List_push(out, grid[a]);
+            List_push(out, grid[c]);
+            List_push(out, grid[b]);
+            List_push(out, grid[b]);
+            List_push(out, grid[c]);
+            List_push(out, grid[e]);
+        }
+    }
+    return out.size;
+}
+
+// The depth image as a static body of a physics world, under a node of its own at the
+// scene's root: rebuilt each `every` frames from the latest depth (a grid every `step`
+// pixels). tag names it for collision handlers.
+struct ArDepthCollider {
+    int step = 4;
+    float max_jump = 0.1;
+    int every = 15;
+    string tag;
+    int _node;
+    bool _has_body;
+    int _body;
+    int _frames;
+    List<Vec3> _corners;
+}
+
+// A collider for scene's world.
+ArDepthCollider ar_depth_collider(*Scene scene) {
+    ArDepthCollider c;
+    c.step = 4;
+    c.max_jump = 0.1;
+    c.every = 15;
+    c.tag = "depth";
+    c._node = scene.add_node(0, "depth collider");
+    return c;
+}
+
+// Takes a frame: every `every` frames with depth, the body becomes the depth's mesh (none
+// when the frame has too little depth). The body's id while there is one.
+int ArDepthCollider_frame(*ArDepthCollider self, *Scene scene, *ScenePhysicsWorld world, *ArFrame frame) {
+    if (frame.depth.data == null) return self._has_body ? self._body : -1;
+    if (self._has_body && self._frames % (self.every > 0 ? self.every : 1) != 0) {
+        self._frames++;
+        return self._body;
+    }
+    self._frames++;
+    int n = ar_depth_triangles(frame, self.step, self.max_jump, &self._corners);
+    if (self._has_body) {
+        world.remove(self._body);
+        self._has_body = false;
+    }
+    if (n < 3) return -1;
+    self._body = world.add(scene, self._node, SCENE_BODY_STATIC, 0.0, scene_physics_triangles(self._corners.data, n));
+    world.body(self._body).tag = self.tag != null ? self.tag : "depth";
+    self._has_body = true;
+    return self._body;
+}
+
+// Frees the collider's corners (the node and body stay with the scene and the world).
+void ArDepthCollider_free(*ArDepthCollider self) {
+    self._corners.free();
+}

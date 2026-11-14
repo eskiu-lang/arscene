@@ -12,6 +12,7 @@ import <gpu/math>;
 import <ar>;
 import <scene>;
 import <arscene>;
+import <scene/physics>;
 
 struct _ArMeshNode {
     int64 id;
@@ -21,14 +22,20 @@ struct _ArMeshNode {
     int seen_count;
     int seen_faces;
     bool here;
+    bool has_body;
+    int body;
 }
 
 // The world's mesh in a scene. show draws it in color (to see what was mapped) instead of
 // as an occluder; occlude (on) hides virtual content behind it. The pieces are children of
 // root (the scene's root unless set before the first frame), so a scene whose space is not
-// the session's puts the session's space in root's transform.
+// the session's puts the session's space in root's transform. With `physics` set, each piece
+// is also a body of that world (kinematic, following the piece, tagged `tag` or "world"), so
+// virtual objects land on and bump into the room (ViroReact's physics against the world mesh).
 struct ArWorldMesh {
     int root;
+    *ScenePhysicsWorld physics;
+    string tag;
     bool occlude;
     bool show;
     Vec4 color;
@@ -106,6 +113,16 @@ Result<int, string> ArWorldMesh_frame(*ArWorldMesh self, *Scene scene, *ArFrame 
                     scene.node(self._nodes.data[at].node).mesh = mr.value;
                 }
             }
+            if (self.physics != null) {
+                // the body takes the piece's pose when it is made: place the node first
+                *SceneNode pn = scene.node(self._nodes.data[at].node);
+                scene_decompose(ar_to_mat4(m.pose), &pn.position, &pn.rotation, &pn.scale);
+                if (self._nodes.data[at].has_body) self.physics.remove(self._nodes.data[at].body);
+                int body = self.physics.add(scene, self._nodes.data[at].node, SCENE_BODY_KINEMATIC, 0.0, scene_physics_geometry(&g));
+                self.physics.body(body).tag = self.tag != null ? self.tag : "world";
+                self._nodes.data[at].body = body;
+                self._nodes.data[at].has_body = true;
+            }
             g.free();
             self._nodes.data[at].seen_vertices = m.vertices;
             self._nodes.data[at].seen_count = m.vertex_count;
@@ -121,6 +138,11 @@ Result<int, string> ArWorldMesh_frame(*ArWorldMesh self, *Scene scene, *ArFrame 
         n.material = self.show ? self._visible : self._occluder;
         // occluders first, so what they hide fails the depth test
         n.rendering_order = self.show ? 0 : -100;
+        // a piece gone takes its body with it
+        if (!self._nodes.data[i].here && self._nodes.data[i].has_body && self.physics != null) {
+            self.physics.remove(self._nodes.data[i].body);
+            self._nodes.data[i].has_body = false;
+        }
     }
     return Ok<int, string>(0);
 }

@@ -14,6 +14,8 @@ import <arscene>;
 import <arscene/placer>;
 import <arscene/markers>;
 import <arscene/world>;
+import <arscene/collide>;
+import <scene/physics>;
 
 int fails = 0;
 
@@ -239,6 +241,67 @@ Result<int, string> run() {
     f.mesh_count = 1;
     under.frame(&scene, &f)?;
     check("pieces under root", scene.node(under._nodes.data[0].node).parent == space);
+
+    // physics against the world's mesh: a floor piece, a ball dropped on it
+    float[12] fv = {-2.0, 0.0, -2.0, 2.0, 0.0, -2.0, 2.0, 0.0, 2.0, -2.0, 0.0, 2.0};
+    uint32[6] ff = {0, 2, 1, 0, 3, 2};
+    ArMesh[1] floor_piece;
+    floor_piece[0] = ArMesh{id: 77, pose: ar_mat4_identity(), vertices: (*uint8)&fv[0], vertex_count: 4, vertex_stride: 12,
+        faces: (*uint8)&ff[0], face_count: 2, index_bytes: 4};
+    f.meshes = &floor_piece[0];
+    f.mesh_count = 1;
+    ScenePhysicsWorld pw = scene_physics();
+    ArWorldMesh solid = ar_world_mesh(&scene);
+    defer solid.free();
+    solid.physics = &pw;
+    solid.frame(&scene, &f)?;
+    check("a body for the piece", solid._nodes.data[0].has_body);
+    int falling = scene.add_node(0, "falling");
+    scene.node(falling).position = Vec3{0.5, 1.0, 0.5};
+    pw.add(&scene, falling, SCENE_BODY_DYNAMIC, 1.0, scene_physics_sphere(0.1));
+    pw.update(&scene, 0.0);
+    for (i in 1..181) pw.update(&scene, (double)i / 60.0);
+    check("a ball lands on the world's mesh", near(scene.node(falling).position.y, 0.1, 0.02));
+    f.mesh_count = 0;
+    solid.frame(&scene, &f)?;
+    check("a piece gone takes its body", !solid._nodes.data[0].has_body);
+    pw.free();
+
+    // physics against the depth: the camera 1.5 m up looking down at a floor
+    float[32] down = {1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5,
+                      1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5};
+    ArFrame df = frame_at();
+    df.camera = translation(0.0, 1.5, 0.0);
+    df.camera.m[5] = 0.0;
+    df.camera.m[6] = -1.0;
+    df.camera.m[9] = 1.0;
+    df.camera.m[10] = 0.0;
+    df.depth = ArDepth{8, 4, ArDepthMeters32, 32, (*uint8)&down[0], 128};
+    List<Vec3> tris;
+    int corners = ar_depth_triangles(&df, 1, 0.1, &tris);
+    float lowest = 10.0;
+    float highest = -10.0;
+    for (i in 0..tris.size) {
+        if (tris.data[i].y < lowest) lowest = tris.data[i].y;
+        if (tris.data[i].y > highest) highest = tris.data[i].y;
+    }
+    check("the depth as triangles on the floor", corners == 7 * 3 * 6 && near(lowest, 0.0, 1e-4) && near(highest, 0.0, 1e-4));
+    down[9] = 3.0;
+    check("an edge left out", ar_depth_triangles(&df, 1, 0.1, &tris) < corners);
+    down[9] = 1.5;
+    tris.free();
+    ScenePhysicsWorld dw = scene_physics();
+    ArDepthCollider collider = ar_depth_collider(&scene);
+    collider.step = 1;
+    defer collider.free();
+    check("a body from the depth", collider.frame(&scene, &dw, &df) >= 0);
+    int drop = scene.add_node(0, "drop");
+    scene.node(drop).position = Vec3{0.0, 0.8, 0.0};
+    dw.add(&scene, drop, SCENE_BODY_DYNAMIC, 1.0, scene_physics_sphere(0.05));
+    dw.update(&scene, 0.0);
+    for (i in 1..121) dw.update(&scene, (double)i / 60.0);
+    check("a ball lands on the depth", near(scene.node(drop).position.y, 0.05, 0.02));
+    dw.free();
     scene.camera_background = 0;
     scene.occlusion_depth = 0;
     return Ok<int, string>(0);
