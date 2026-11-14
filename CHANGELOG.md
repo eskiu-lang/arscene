@@ -18,3 +18,4 @@ All notable changes to this package are documented here. The format follows
 - `ArStage` passes the session's scene semantics to the scene, for semantic masks.
 - Physics against the real world: `ArWorldMesh.physics` (a body per LiDAR piece) and
   `ArDepthCollider` / `ar_depth_triangles` (the depth image as a triangle body).
+- `ArMarkers_add_object`: nodes on ARKit object targets (ViroARObjectMarker).

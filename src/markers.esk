@@ -1,6 +1,6 @@
-// markers.esk: content on tracked images (`<arscene/markers>`), ViroARImageMarker: a node
-// per image target follows that image's pose while it is tracked, hidden while it is not,
-// with a handler told when each image is found and lost.
+// markers.esk: content on tracked images and objects (`<arscene/markers>`),
+// ViroARImageMarker and ViroARObjectMarker: a node per target follows its pose while it is
+// tracked, hidden while it is not, with a handler told when each is found and lost.
 
 import <mem>;
 import <list>;
@@ -13,6 +13,7 @@ struct _ArMarker {
     int image;
     int node;
     bool found;
+    bool object;
 }
 
 // Nodes on image targets. keep_last_known keeps a node where its image was last seen when
@@ -39,6 +40,14 @@ void ArMarkers_add(*ArMarkers self, *Scene scene, int image, int node) {
     scene.node(node).visible = false;
 }
 
+// Puts node on the object target at `object` (its index in ArOptions.objects, ARKit), hidden
+// until it is found; the node takes the reference object's pose (ViroARObjectMarker). The
+// handler hears of it with the object's index.
+void ArMarkers_add_object(*ArMarkers self, *Scene scene, int object, int node) {
+    List_push(&self.list, _ArMarker{image: object, node: node, found: false, object: true});
+    scene.node(node).visible = false;
+}
+
 // Calls handler(image, found) when an image is found (true) or lost (false), as
 // ViroARImageMarker's onAnchorFound and onAnchorRemoved.
 void ArMarkers_on_change(*ArMarkers self, escaping fn(int, bool)->void handler) {
@@ -52,7 +61,7 @@ void ArMarkers_frame(*ArMarkers self, *Scene scene, *ArFrame frame) {
     for (i in 0..self.list.size) {
         *_ArMarker m = &self.list.data[i];
         bool seen = false;
-        for (k in 0..frame.image_count) {
+        for (k in 0..(m.object ? 0 : frame.image_count)) {
             *ArTrackedImage t = &frame.images[k];
             if (t.index != m.image || t.method == ArImageNotTracking) continue;
             if (t.method == ArImageLastKnown && !self.keep_last_known) continue;
@@ -60,6 +69,14 @@ void ArMarkers_frame(*ArMarkers self, *Scene scene, *ArFrame frame) {
             *SceneNode n = scene.node(m.node);
             Mat4 parent = n.parent >= 0 ? scene.node(n.parent).world : mat4_identity();
             scene_decompose(parent.inverse() * ar_to_mat4(t.pose), &n.position, &n.rotation, &n.scale);
+        }
+        for (k in 0..(m.object ? frame.object_count : 0)) {
+            *ArTrackedObject o = &frame.objects[k];
+            if (o.index != m.image) continue;
+            seen = true;
+            *SceneNode n = scene.node(m.node);
+            Mat4 parent = n.parent >= 0 ? scene.node(n.parent).world : mat4_identity();
+            scene_decompose(parent.inverse() * ar_to_mat4(o.pose), &n.position, &n.rotation, &n.scale);
         }
         scene.node(m.node).visible = seen;
         if (seen != m.found) {

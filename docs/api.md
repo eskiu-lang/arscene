@@ -147,9 +147,9 @@ Frees the collider's corners (the node and body stay with the scene and the worl
 
 ## `<arscene/markers>`
 
-Content on tracked images (`<arscene/markers>`), ViroARImageMarker: a node
-per image target follows that image's pose while it is tracked, hidden while it is not,
-with a handler told when each image is found and lost.
+Content on tracked images and objects (`<arscene/markers>`),
+ViroARImageMarker and ViroARObjectMarker: a node per target follows its pose while it is
+tracked, hidden while it is not, with a handler told when each is found and lost.
 
 ### ArMarkers
 
@@ -181,6 +181,16 @@ void ArMarkers_add(*ArMarkers self, *Scene scene, int image, int node)
 Puts node on the image target at `image` (its index in ArOptions.images), hidden until it
 is found. The node's own transform is replaced by the image's pose (x to the picture's
 right, z toward its bottom, y out of its face): put the content under it.
+
+### ArMarkers_add_object
+
+```eskiu
+void ArMarkers_add_object(*ArMarkers self, *Scene scene, int object, int node)
+```
+
+Puts node on the object target at `object` (its index in ArOptions.objects, ARKit), hidden
+until it is found; the node takes the reference object's pose (ViroARObjectMarker). The
+handler hears of it with the object's index.
 
 ### ArMarkers_on_change
 

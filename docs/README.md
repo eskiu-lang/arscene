@@ -71,6 +71,12 @@ depth model) as a static triangle body, rebuilt every `every` frames (15) from a
 `step` depth pixels (4), cells across depth jumps of more than `max_jump` (10%) left out;
 `ar_depth_triangles` gives those triangles.
 
+## Object markers
+
+`ArMarkers_add_object(&scene, object, node)` puts a node on an object target (its index in
+`ArOptions.objects`, iOS), as ViroReact's `ViroARObjectMarker`: shown at the reference
+object's pose while it is found, hidden otherwise, with the same found and lost handler.
+
 ## Tests
 
 `tests/arscene.esk` runs with no device: frames built by hand and stand-ins for ar's native
