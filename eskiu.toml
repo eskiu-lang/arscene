@@ -1,0 +1,9 @@
+[package]
+name = "arscene"
+version = "0.1.0"
+
+[deps]
+ar = { path = "../eskiu-ar" }
+scene = { path = "../eskiu-scene" }
+gpu = { git = "https://github.com/eskiu-lang/gpu", rev = "v0.6.0" }
+ui = { git = "https://github.com/eskiu-lang/ui", rev = "v0.5.0" }

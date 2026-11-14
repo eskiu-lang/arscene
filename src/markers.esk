@@ -1,0 +1,79 @@
+// markers.esk: content on tracked images (`<arscene/markers>`), ViroARImageMarker: a node
+// per image target follows that image's pose while it is tracked, hidden while it is not,
+// with a handler told when each image is found and lost.
+
+import <mem>;
+import <list>;
+import <gpu/math>;
+import <ar>;
+import <scene>;
+import <arscene>;
+
+struct _ArMarker {
+    int image;
+    int node;
+    bool found;
+}
+
+// Nodes on image targets. keep_last_known keeps a node where its image was last seen when
+// the platform only knows it from before (ArImageLastKnown) instead of hiding it.
+struct ArMarkers {
+    List<_ArMarker> list;
+    bool keep_last_known;
+    bool _has_handler;
+    fn(int, bool)->void _handler;
+}
+
+ArMarkers ar_markers() {
+    ArMarkers m;
+    m.keep_last_known = true;
+    return m;
+}
+
+// Puts node on the image target at `image` (its index in ArOptions.images), hidden until it
+// is found. The node's own transform is replaced by the image's pose (x to the picture's
+// right, z toward its bottom, y out of its face): put the content under it.
+void ArMarkers_add(*ArMarkers self, *Scene scene, int image, int node) {
+    List_push(&self.list, _ArMarker{image, node, false});
+    scene.node(node).visible = false;
+}
+
+// Calls handler(image, found) when an image is found (true) or lost (false), as
+// ViroARImageMarker's onAnchorFound and onAnchorRemoved.
+void ArMarkers_on_change(*ArMarkers self, escaping fn(int, bool)->void handler) {
+    if (self._has_handler) free_closure(self._handler);
+    self._handler = handler;
+    self._has_handler = true;
+}
+
+// Moves each marker's node to its image in frame.
+void ArMarkers_frame(*ArMarkers self, *Scene scene, *ArFrame frame) {
+    for (i in 0..self.list.size) {
+        *_ArMarker m = &self.list.data[i];
+        bool seen = false;
+        for (k in 0..frame.image_count) {
+            *ArTrackedImage t = &frame.images[k];
+            if (t.index != m.image || t.method == ArImageNotTracking) continue;
+            if (t.method == ArImageLastKnown && !self.keep_last_known) continue;
+            seen = true;
+            *SceneNode n = scene.node(m.node);
+            Mat4 parent = n.parent >= 0 ? scene.node(n.parent).world : mat4_identity();
+            scene_decompose(parent.inverse() * ar_to_mat4(t.pose), &n.position, &n.rotation, &n.scale);
+        }
+        scene.node(m.node).visible = seen;
+        if (seen != m.found) {
+            m.found = seen;
+            if (self._has_handler) {
+                fn(int, bool)->void h = self._handler;
+                h(m.image, seen);
+            }
+        }
+    }
+}
+
+// Frees the markers and their handler.
+void ArMarkers_free(*ArMarkers self) {
+    self.list.free();
+    if (self._has_handler) free_closure(self._handler);
+    self._has_handler = false;
+}

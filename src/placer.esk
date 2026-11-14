@@ -1,0 +1,216 @@
+// placer.esk: tap to place (`<arscene/placer>`), ViroARPlaneSelector's flow: the surfaces the
+// session finds drawn as translucent shapes, a ring where the middle of the view meets one,
+// and the content (a node, hidden until then) put on the surface the user taps, turned to
+// face them, with a floor under it that shows its shadows on the real one.
+
+import <mem>;
+import <list>;
+import <result>;
+import <libc>;
+import <gpu>;
+import <gpu/math>;
+import <ar>;
+import <scene>;
+import <scene/shapes>;
+import <arscene>;
+
+struct _ArPlaneView {
+    int64 id;
+    int node;
+    int mesh;
+    bool seen;
+}
+
+// A placer for node `content`. scale is the content's size once placed; show_planes,
+// show_reticle and shadows (the shadow-catching floor under the content, which needs a light
+// that casts shadows) are on by default; hide_planes_when_placed hides the surfaces after a
+// placement. kinds limits placement to planes of those ArPlaneClass values (a bit per class,
+// 0 for any). After each frame, placed says whether the content is down, center_hit whether
+// the middle of the view meets a surface and center_kind its class; plane is the id of the
+// plane the content stands on.
+struct ArPlacer {
+    int content;
+    float scale;
+    bool show_planes;
+    bool show_reticle;
+    bool shadows;
+    bool hide_planes_when_placed;
+    int kinds;
+    bool placed;
+    bool center_hit;
+    int center_kind;
+    int64 plane;
+    Vec4 plane_color;
+    List<_ArPlaneView> _planes;
+    int _plane_mat;
+    int _reticle;
+    int _catcher;
+    Vec3 _eye;
+}
+
+// A placer for content (hidden until placed), with a translucent violet for the surfaces.
+Result<ArPlacer, string> ar_placer(*Scene scene, int content) {
+    ArPlacer p;
+    p.content = content;
+    p.scale = 1.0;
+    p.show_planes = true;
+    p.show_reticle = true;
+    p.shadows = true;
+    p.hide_planes_when_placed = true;
+    p.plane_color = Vec4{0.55, 0.5, 1.0, 0.28};
+    scene.node(content).visible = false;
+    SceneMaterial pm = scene_material(SCENE_CONSTANT);
+    pm.diffuse = p.plane_color;
+    pm.alpha_mode = SCENE_ALPHA_BLEND;
+    pm.double_sided = true;
+    pm.skip_depth_write = true;
+    p._plane_mat = scene.add_material(pm);
+    // the ring
+    List<Vec2> ring;
+    List<Vec2> hole;
+    for (i in 0..48) {
+        float a = (float)i / 48.0 * 6.2831853;
+        List_push(&ring, Vec2{(float)cos((double)a) * 0.06, (float)sin((double)a) * 0.06});
+        List_push(&hole, Vec2{(float)cos((double)a) * 0.045, (float)sin((double)a) * 0.045});
+    }
+    List<List<Vec2>> holes;
+    List_push(&holes, hole);
+    SceneGeometry rg = scene_polygon(&ring, &holes, Vec4{0.0, 0.0, 1.0, 1.0});
+    ring.free();
+    hole.free();
+    holes.free();
+    Result<int, string> rm = scene.add_geometry(&rg);
+    rg.free();
+    SceneMaterial ringm = scene_material(SCENE_CONSTANT);
+    ringm.diffuse = Vec4{1.0, 1.0, 1.0, 0.95};
+    ringm.alpha_mode = SCENE_ALPHA_BLEND;
+    ringm.double_sided = true;
+    ringm.skip_depth_test = true;
+    p._reticle = scene.add_object(0, rm?, scene.add_material(ringm));
+    scene.node(p._reticle).visible = false;
+    scene.node(p._reticle).rendering_order = 10;
+    scene.node(p._reticle).ignore_events = true;
+    // the floor that shows the content's shadows
+    SceneGeometry fg = scene_plane(4.0, 4.0);
+    Result<int, string> fm = scene.add_geometry(&fg);
+    fg.free();
+    SceneMaterial cm = scene_material(SCENE_PBR);
+    cm.shadow_catcher = true;
+    p._catcher = scene.add_object(content, fm?, scene.add_material(cm));
+    scene.node(p._catcher).ignore_events = true;
+    return Ok<ArPlacer, string>(p);
+}
+
+// A pose (a plane's or a hit's, y along the normal) for a shape in the x-y plane: lying on it.
+Mat4 _arp_lying(ArMat4 pose) {
+    return ar_to_mat4(pose) * mat4_trs(Vec3{0.0, 0.0, 0.0}, quat_axis_angle(Vec3{1.0, 0.0, 0.0}, -1.5707963), Vec3{1.0, 1.0, 1.0});
+}
+
+void _arp_set(*Scene scene, int node, Mat4 world) {
+    *SceneNode n = scene.node(node);
+    Mat4 parent = n.parent >= 0 ? scene.node(n.parent).world : mat4_identity();
+    scene_decompose(parent.inverse() * world, &n.position, &n.rotation, &n.scale);
+}
+
+bool _arp_kind_ok(*ArPlacer self, int kind) {
+    return self.kinds == 0 || (self.kinds & (1 << kind)) != 0;
+}
+
+int _arp_kind_of(*ArFrame frame, int64 plane) {
+    for (i in 0..frame.plane_count) {
+        if (frame.planes[i].id == plane) return frame.planes[i].classification;
+    }
+    return ArPlaneNone;
+}
+
+// Draws the surfaces of frame and the ring at the middle of the view (width x height).
+Result<int, string> ArPlacer_frame(*ArPlacer self, *Scene scene, *ArFrame frame, float width, float height) {
+    Mat4 cam = ar_to_mat4(frame.view()).inverse();
+    self._eye = Vec3{cam.m[12], cam.m[13], cam.m[14]};
+    bool planes = self.show_planes && !(self.placed && self.hide_planes_when_placed);
+    for (i in 0..self._planes.size) self._planes.data[i].seen = false;
+    for (i in 0..frame.plane_count) {
+        if (!planes) break;
+        *ArPlane p = &frame.planes[i];
+        if (p.subsumed_by != 0 || p.polygon_count < 3 || !_arp_kind_ok(self, p.classification)) continue;
+        int at = -1;
+        for (k in 0..self._planes.size) {
+            if (self._planes.data[k].id == p.id) at = k;
+        }
+        List<Vec2> outline;
+        for (k in 0..p.polygon_count) List_push(&outline, Vec2{p.polygon[k].x, -p.polygon[k].y});
+        SceneGeometry g = scene_polygon(&outline, null, Vec4{0.0, 0.0, 1.0, 1.0});
+        outline.free();
+        if (at < 0) {
+            _ArPlaneView v;
+            v.id = p.id;
+            Result<int, string> mr = scene.add_geometry(&g);
+            if (!mr.ok) {
+                g.free();
+                return Err<int, string>(mr.error);
+            }
+            v.mesh = mr.value;
+            v.node = scene.add_object(0, v.mesh, self._plane_mat);
+            scene.node(v.node).ignore_events = true;
+            List_push(&self._planes, v);
+            at = self._planes.size - 1;
+        } else if (!scene.set_geometry(self._planes.data[at].mesh, &g)) {
+            Result<int, string> mr = scene.add_geometry(&g);
+            if (mr.ok) {
+                self._planes.data[at].mesh = mr.value;
+                scene.node(self._planes.data[at].node).mesh = mr.value;
+            }
+        }
+        g.free();
+        self._planes.data[at].seen = true;
+        _arp_set(scene, self._planes.data[at].node, _arp_lying(p.pose));
+    }
+    for (i in 0..self._planes.size) scene.node(self._planes.data[i].node).visible = self._planes.data[i].seen;
+    ArHit[1] hit;
+    self.center_hit = frame.hit_test(width * 0.5, height * 0.5, width, height, AR_HIT_PLANES, &hit[0], 1) > 0;
+    self.center_kind = self.center_hit ? _arp_kind_of(frame, hit[0].plane) : ArPlaneNone;
+    if (self.center_hit && !_arp_kind_ok(self, self.center_kind)) self.center_hit = false;
+    bool ring = self.show_reticle && self.center_hit && !self.placed;
+    scene.node(self._reticle).visible = ring;
+    if (ring) _arp_set(scene, self._reticle, _arp_lying(hit[0].pose));
+    scene.node(self._catcher).visible = self.placed && self.shadows;
+    return Ok<int, string>(0);
+}
+
+// Puts the content at pose (y along the surface's normal), turned about it to face the
+// viewer, at its scale, and shows it.
+void ArPlacer_place(*ArPlacer self, *Scene scene, ArMat4 pose, int64 plane) {
+    Mat4 m = ar_to_mat4(pose);
+    Vec3 at = Vec3{m.m[12], m.m[13], m.m[14]};
+    Vec3 d = self._eye - at;
+    float yaw = (float)atan2((double)d.x, (double)d.z);
+    Mat4 world = mat4_trs(at, quat_axis_angle(Vec3{0.0, 1.0, 0.0}, yaw), Vec3{self.scale, self.scale, self.scale});
+    _arp_set(scene, self.content, world);
+    scene.node(self.content).visible = true;
+    self.placed = true;
+    self.plane = plane;
+    scene.node(self._reticle).visible = false;
+}
+
+// Places the content where a tap at (x, y) of the view (width x height) meets a surface;
+// false when it meets none (of the allowed kinds).
+bool ArPlacer_tap(*ArPlacer self, *Scene scene, *ArFrame frame, float x, float y, float width, float height) {
+    ArHit[1] hit;
+    if (frame.hit_test(x, y, width, height, AR_HIT_PLANES, &hit[0], 1) == 0) return false;
+    if (!_arp_kind_ok(self, _arp_kind_of(frame, hit[0].plane))) return false;
+    Mat4 cam = ar_to_mat4(frame.view()).inverse();
+    self._eye = Vec3{cam.m[12], cam.m[13], cam.m[14]};
+    ArPlacer_place(self, scene, hit[0].pose, hit[0].plane);
+    return true;
+}
+
+// Hides the content again, for a new placement.
+void ArPlacer_reset(*ArPlacer self, *Scene scene) {
+    self.placed = false;
+    scene.node(self.content).visible = false;
+}
+
+// Frees the placer's lists (its nodes stay in the scene).
+void ArPlacer_free(*ArPlacer self) {
+    self._planes.free();
+}

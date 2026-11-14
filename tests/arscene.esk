@@ -1,0 +1,203 @@
+// arscene with no device: frames built by hand and stand-ins for ar's native side. The stage
+// draws the camera picture behind the scene, puts the camera at the device's pose with the
+// session's projection and hands the depth image to the scene; the placer draws the planes
+// and the ring, places on a tap (only on allowed kinds of plane) and shows the shadow floor;
+// markers follow an image while it is tracked and tell when it is found and lost.
+import <io>;
+import <mem>;
+import <libc>;
+import <gpu>;
+import <gpu/math>;
+import <ar>;
+import <scene>;
+import <arscene>;
+import <arscene/placer>;
+import <arscene/markers>;
+
+int fails = 0;
+
+void check(string what, bool ok) {
+    if (!ok) {
+        printf("FAIL %s\n", what);
+        fails++;
+    }
+}
+
+bool near(float a, float b, float tol) {
+    return a - b < tol && b - a < tol;
+}
+
+// --- ar's native side, standing in ---
+
+// the hit the next hit test returns: a plane 2 m ahead, 1 m down
+ArMat4 hit_pose;
+int64 hit_plane = 100;
+int hits_given;
+int found;
+int lost;
+
+void ar_native_session(int on, int flags, int width, int height) {}
+int ar_native_frame_acquire(*int64 image, *double camera) { return 0; }
+void ar_native_frame_release() {}
+int ar_native_plane_count() { return 0; }
+int ar_native_plane(int index, *double info, *float polygon, int max_points) { return -1; }
+int ar_native_anchor_count() { return 0; }
+void ar_native_anchor(int index, *double info) {}
+int ar_native_points(*float out, int max_points) { return 0; }
+int ar_native_light(*double info) { return 0; }
+int ar_native_depth(*int64 info) { return 0; }
+int ar_native_hit_test(*float ray, int targets, *double out, int max_hits) {
+    hits_given++;
+    out[0] = 2.0;
+    out[1] = (double)AR_HIT_PLANE;
+    out[2] = (double)hit_plane;
+    for (k in 0..16) out[3 + k] = (double)hit_pose.m[k];
+    return 1;
+}
+double ar_native_anchor_add(*float pose, double plane) { return 1.0; }
+void ar_native_anchor_remove(double id) {}
+void ar_native_images(int count, int tracked) {}
+void ar_native_image_add(int index, *uint8 gray, int width, int height, string path, double physical_width) {}
+int ar_native_image_state(int index) { return ArImageReady; }
+int ar_native_tracked_image_count() { return 0; }
+void ar_native_tracked_image(int index, *double info) {}
+
+// --- frames ---
+
+uint8[8 * 4 * 4] picture;
+float[2] depth = {1.0, 10.0};
+ArPlane[1] planes;
+ArVec2[4] outline = {ArVec2{-0.5, -0.5}, ArVec2{0.5, -0.5}, ArVec2{0.5, 0.5}, ArVec2{-0.5, 0.5}};
+ArTrackedImage[1] images;
+
+ArMat4 translation(float x, float y, float z) {
+    ArMat4 m = ar_mat4_identity();
+    m.m[12] = x;
+    m.m[13] = y;
+    m.m[14] = z;
+    return m;
+}
+
+// A frame: the device at (0, 1.5, 0) looking down -z, an 8 x 4 orange picture, a floor plane
+// 1 m below it and the depth image.
+ArFrame frame_at() {
+    ArFrame f;
+    for (i in 0..32) {
+        picture[i * 4] = 255;
+        picture[i * 4 + 1] = 128;
+        picture[i * 4 + 2] = 0;
+        picture[i * 4 + 3] = 255;
+    }
+    f.image.width = 8;
+    f.image.height = 4;
+    f.image.format = 4;
+    f.image.plane_count = 1;
+    f.image.planes[0] = ArImagePlane{&picture[0], 32, 4, 128};
+    f.has_image = true;
+    f.camera = translation(0.0, 1.5, 0.0);
+    f.intrinsics = ArIntrinsics{8.0, 8.0, 4.0, 2.0, 8, 4};
+    f.tracking = ArTrackingNormal;
+    planes[0].id = 100;
+    planes[0].alignment = ArHorizontalUp;
+    planes[0].pose = translation(0.0, 0.5, -2.0);
+    planes[0].polygon = &outline[0];
+    planes[0].polygon_count = 4;
+    planes[0].classification = ArPlaneFloor;
+    f.planes = &planes[0];
+    f.plane_count = 1;
+    f.depth = ArDepth{2, 1, ArDepthMeters32, 8, (*uint8)&depth[0], 8};
+    return f;
+}
+
+Result<int, string> run() {
+    Gpu gpu = gpu_open()?;
+    defer gpu.release();
+    Scene scene = gpu.scene()?;
+    defer scene.release();
+    scene.post.tone_mapping = SCENE_TONE_NONE;
+    int cam = scene.add_camera(0, scene_perspective(1.0, 0.1, 50.0));
+    scene.set_camera(cam);
+    ArStage stage = ar_stage(&scene, cam)?;
+    defer stage.release();
+    GpuTexture target = gpu.target_with(16, 16, WGPUTextureFormat_RGBA8Unorm)?;
+    defer target.release();
+    *uint8 px = alloc<uint8>(16 * 16 * 4);
+    defer free(px);
+
+    ArFrame f = frame_at();
+    stage.frame(&scene, &f, 16, 16)?;
+    scene.render_to(&target)?;
+    target.read(px)?;
+    check("the camera picture behind the scene", (int)px[(8 * 16 + 8) * 4] > 250 && near((float)px[(8 * 16 + 8) * 4 + 1], 128.0, 2.0));
+    scene.update();
+    Mat4 w = scene.node(cam).world;
+    Mat4 want = ar_to_mat4(f.view()).inverse();
+    check("the camera at the device's pose", near(w.m[12], want.m[12], 1e-4) && near(w.m[13], want.m[13], 1e-4) && near(w.m[14], want.m[14], 1e-4));
+    check("the session's projection", scene.camera(cam).projection == SCENE_CUSTOM);
+    check("the depth image for occlusion", scene.occlusion_depth > 0);
+    stage.occlusion = false;
+    stage.frame(&scene, &f, 16, 16)?;
+    check("occlusion off", scene.occlusion_depth == 0);
+
+    // placing
+    int content = scene.add_node(0, "content");
+    SceneGeometry bg = scene_box(0.2, 0.2, 0.2);
+    int box = scene.add_geometry(&bg)?;
+    bg.free();
+    scene.add_object(content, box, scene.add_material(scene_material(SCENE_LAMBERT)));
+    ArPlacer placer = ar_placer(&scene, content)?;
+    defer placer.free();
+    placer.scale = 0.5;
+    check("content hidden until placed", !scene.node(content).visible);
+    hit_pose = translation(0.2, 0.5, -2.0);
+    placer.frame(&scene, &f, 16.0, 16.0)?;
+    check("the plane is drawn", placer._planes.size == 1 && scene.node(placer._planes.data[0].node).visible);
+    check("the ring where the middle of the view meets it", placer.center_hit && scene.node(placer._reticle).visible &&
+        placer.center_kind == ArPlaneFloor);
+    check("a tap places", placer.tap(&scene, &f, 4.0, 12.0, 16.0, 16.0) && placer.placed && placer.plane == 100);
+    placer.frame(&scene, &f, 16.0, 16.0)?;
+    scene.update();
+    Mat4 cw = scene.node(content).world;
+    check("the content stands on the hit, at its scale", near(cw.m[12], 0.2, 1e-4) && near(cw.m[13], 0.5, 1e-4) &&
+        near(cw.m[14], -2.0, 1e-4) && near(scene.node(content).scale.x, 0.5, 1e-4) && scene.node(content).visible);
+    check("the planes and the ring hidden once placed", !scene.node(placer._planes.data[0].node).visible && !scene.node(placer._reticle).visible);
+    check("the shadow floor under it", scene.node(placer._catcher).visible);
+    placer.reset(&scene);
+    placer.kinds = 1 << ArPlaneTable;
+    check("only allowed kinds of plane", !placer.tap(&scene, &f, 4.0, 12.0, 16.0, 16.0) && !placer.placed);
+
+    // markers
+    int on_image = scene.add_node(0, "poster");
+    ArMarkers markers = ar_markers();
+    defer markers.free();
+    found = 0;
+    lost = 0;
+    markers.on_change(void(int image, bool now) {
+        if (now) found++;
+        else lost++;
+    });
+    markers.add(&scene, 0, on_image);
+    images[0] = ArTrackedImage{id: 5, index: 0, tracking: ArTrackingNormal, method: ArImageFull, pose: translation(0.3, 1.0, -1.0)};
+    f.images = &images[0];
+    f.image_count = 1;
+    markers.frame(&scene, &f);
+    scene.update();
+    check("a found image shows its node at its pose", scene.node(on_image).visible && near(scene.node(on_image).world.m[12], 0.3, 1e-4) && found == 1);
+    f.image_count = 0;
+    markers.frame(&scene, &f);
+    check("a lost image hides it", !scene.node(on_image).visible && lost == 1);
+    scene.camera_background = 0;
+    scene.occlusion_depth = 0;
+    return Ok<int, string>(0);
+}
+
+int main() {
+    Result<int, string> r = run();
+    if (!r.ok) {
+        printf("FAIL %s\n", r.error);
+        return 1;
+    }
+    if (fails > 0) return 1;
+    printf("arscene: ok\n");
+    return 0;
+}

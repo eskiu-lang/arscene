@@ -1,0 +1,155 @@
+// arscene.esk: augmented reality on eskiu-lang/scene (`<arscene>`).
+//
+// The pieces every AR app with a scene writes by hand, as ViroReact's AR scene navigator
+// does them: ArStage takes each frame of an eskiu-lang/ar session into the scene (the camera
+// picture behind it, the device as its camera, the real world's depth hiding what is behind
+// it); ArPlacer shows the surfaces found and puts content where the user taps
+// (ViroARPlaneSelector); ArMarkers keeps content on tracked images (ViroARImageMarker).
+//
+//     ArStage stage = ar_stage(&scene, cam)?;
+//     ArPlacer placer = ar_placer(&scene, content)?;
+//     use_ar_session(ArOptions{horizontal: true, depth: true}, void(*ArFrame frame) {
+//         stage.frame(&scene, frame, width, height)?;
+//         placer.frame(&scene, frame, width, height)?;
+//         if (tapped) placer.tap(&scene, frame, tap_x, tap_y, width, height);
+//         scene.render(view, width, height, format)?;
+//     });
+
+import <mem>;
+import <list>;
+import <result>;
+import <libc>;
+import <gpu>;
+import <gpu/math>;
+import <gpu/yuv>;
+import <ar>;
+import <scene>;
+
+// ArMat4 and Mat4 share a layout (column major, 16 floats).
+Mat4 ar_to_mat4(ArMat4 m) {
+    return *(*Mat4)&m;
+}
+
+// What ArStage_frame does with each frame: the camera picture as the background, the
+// device's pose and projection for the scene's camera (near and far in meters), the real
+// world's depth for occlusion (when the session gives depth), and the light estimate.
+struct ArStage {
+    int camera;
+    float near;
+    float far;
+    bool occlusion;
+    ArLight light;
+    GpuYuv _yuv;
+    bool _has_yuv;
+    GpuTexture _picture;
+    bool _has_picture;
+    uint32 _w;
+    uint32 _h;
+    GpuTexture _depth;
+    bool _has_depth;
+    int _depth_w;
+    int _depth_h;
+    *float _meters;
+}
+
+// A stage for scene's camera node `camera` (made with Scene_add_camera), with near 0.02 m,
+// far 100 m and occlusion on. The scene's background turns transparent: the picture shows
+// through it.
+Result<ArStage, string> ar_stage(*Scene scene, int camera) {
+    ArStage s;
+    s.camera = camera;
+    s.near = 0.02;
+    s.far = 100.0;
+    s.occlusion = true;
+    scene.background = Vec4{0.0, 0.0, 0.0, 0.0};
+    scene.skybox = null;
+    return Ok<ArStage, string>(s);
+}
+
+// Takes frame into scene for a view of width x height pixels: draws the camera picture,
+// fitted to the view as the projection assumes, into the scene's camera_background; puts the
+// camera node at the device's pose with the session's projection; uploads the depth image as
+// the scene's occlusion depth.
+Result<int, string> ArStage_frame(*ArStage self, *Scene scene, *ArFrame frame, uint32 width, uint32 height) {
+    if (width == 0 || height == 0) return Ok<int, string>(0);
+    float w = (float)width;
+    float h = (float)height;
+    if (frame.has_image) {
+        if (!self._has_yuv) {
+            self._yuv = scene.gpu.yuv(WGPUTextureFormat_RGBA8Unorm)?;
+            self._has_yuv = true;
+        }
+        if (!self._has_picture || self._w != width || self._h != height) {
+            if (self._has_picture) self._picture.release();
+            self._picture = scene.gpu.target_with(width, height, WGPUTextureFormat_RGBA8Unorm)?;
+            self._has_picture = true;
+            self._w = width;
+            self._h = height;
+        }
+        self._yuv.upload((*GpuYuvImage)&frame.image)?;
+        GpuPass pass = scene.gpu.pass(self._picture.view, GpuColor{0.0, 0.0, 0.0, 1.0}, null);
+        GpuYuvDraw d = GpuYuvDraw{width: w, height: h, fit: GPU_YUV_COVER, upright: true};
+        self._yuv.draw(&pass, &d);
+        pass.end()?;
+        scene.camera_background = scene.borrow_texture(scene.camera_background, &self._picture);
+    }
+    // the camera: the device's pose under the camera node's parent, the session's projection
+    Mat4 world = ar_to_mat4(frame.view()).inverse();
+    *SceneNode cam = scene.node(self.camera);
+    Mat4 parent = cam.parent >= 0 ? scene.node(cam.parent).world : mat4_identity();
+    scene_decompose(parent.inverse() * world, &cam.position, &cam.rotation, &cam.scale);
+    *SceneCamera c = scene.camera(self.camera);
+    *c = scene_projection(ar_to_mat4(frame.projection(w, h, self.near, self.far)), self.near, self.far);
+    self.light = frame.light;
+    if (self.occlusion) _ar_stage_depth(self, scene, frame, w, h)?;
+    else scene.occlusion_depth = 0;
+    return Ok<int, string>(0);
+}
+
+Result<int, string> _ar_stage_depth(*ArStage self, *Scene scene, *ArFrame frame, float w, float h) {
+    *ArDepth d = &frame.depth;
+    if (d.data == null || d.width <= 0 || d.height <= 0) {
+        scene.occlusion_depth = 0;
+        return Ok<int, string>(0);
+    }
+    if (!self._has_depth || self._depth_w != d.width || self._depth_h != d.height) {
+        if (self._has_depth) self._depth.release();
+        if (self._meters != null) free(self._meters);
+        GpuTextureDesc dd = GpuTextureDesc{width: (uint32)d.width, height: (uint32)d.height, format: WGPUTextureFormat_R32Float,
+            usage: WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst};
+        self._depth = scene.gpu.texture_with(&dd)?;
+        self._has_depth = true;
+        self._depth_w = d.width;
+        self._depth_h = d.height;
+        self._meters = alloc<float>(d.width * d.height);
+    }
+    for (y in 0..d.height) {
+        for (x in 0..d.width) self._meters[y * d.width + x] = d.meters(x, y);
+    }
+    self._depth.write_level(0, 0, self._meters)?;
+    scene.occlusion_depth = scene.borrow_texture(scene.occlusion_depth, &self._depth);
+    // the view's coordinates to the picture's, which the depth image lines up with
+    ArAffine a = frame.display_transform(w, h);
+    Mat4 m = mat4_identity();
+    m.m[0] = a.a;
+    m.m[1] = a.b;
+    m.m[4] = a.c;
+    m.m[5] = a.d;
+    m.m[12] = a.tx;
+    m.m[13] = a.ty;
+    scene.occlusion_transform = m;
+    return Ok<int, string>(0);
+}
+
+// Releases what the stage made (the scene keeps its borrowed ids, now pointing at nothing:
+// release the stage after the scene, or set camera_background and occlusion_depth to 0).
+void ArStage_release(*ArStage self) {
+    if (self._has_yuv) self._yuv.release();
+    if (self._has_picture) self._picture.release();
+    if (self._has_depth) self._depth.release();
+    if (self._meters != null) free(self._meters);
+    self._has_yuv = false;
+    self._has_picture = false;
+    self._has_depth = false;
+    self._meters = null;
+}
