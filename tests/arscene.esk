@@ -50,6 +50,12 @@ int ar_native_points(*float out, int max_points) { return 0; }
 int ar_native_light(*double info) { return 0; }
 int ar_native_depth(*int64 info) { return 0; }
 void ar_native_depth_model(string path) {}
+double ar_native_cloud_host(double anchor, int ttl_days) { return 0.0; }
+double ar_native_cloud_resolve(string cloud_id) { return 0.0; }
+double ar_native_earth_anchor(double lat, double lng, double alt, *float quaternion) { return 0.0; }
+double ar_native_earth_resolve(int rooftop, double lat, double lng, double alt, *float quaternion) { return 0.0; }
+int ar_native_job(double job, *double info, *char text, int capacity) { return 3; }
+int ar_native_earth(*double info) { return 0; }
 int ar_native_hit_test(*float ray, int targets, *double out, int max_hits) {
     hits_given++;
     out[0] = 2.0;
