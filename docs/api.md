@@ -246,6 +246,7 @@ session updates it.
 
 ```eskiu
 struct ArWorldMesh {
+    int root;
     bool occlude;
     bool show;
     Vec4 color;
@@ -253,7 +254,9 @@ struct ArWorldMesh {
 ```
 
 The world's mesh in a scene. show draws it in color (to see what was mapped) instead of
-as an occluder; occlude (on) hides virtual content behind it.
+as an occluder; occlude (on) hides virtual content behind it. The pieces are children of
+root (the scene's root unless set before the first frame), so a scene whose space is not
+the session's puts the session's space in root's transform.
 
 ### ar_world_mesh
 

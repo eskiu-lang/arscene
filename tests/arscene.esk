@@ -216,6 +216,13 @@ Result<int, string> run() {
     f.mesh_count = 0;
     world.frame(&scene, &f)?;
     check("a piece gone is hidden", !scene.node(piece).visible);
+    int space = scene.add_node(0, "session");
+    ArWorldMesh under = ar_world_mesh(&scene);
+    defer under.free();
+    under.root = space;
+    f.mesh_count = 1;
+    under.frame(&scene, &f)?;
+    check("pieces under root", scene.node(under._nodes.data[0].node).parent == space);
     scene.camera_background = 0;
     scene.occlusion_depth = 0;
     return Ok<int, string>(0);

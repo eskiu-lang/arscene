@@ -51,7 +51,8 @@ piece of that mesh, rebuilt only when the session updates the piece and hidden w
 away. By default the pieces are invisible occluders drawn before everything else, so virtual
 content goes behind real walls and furniture even where the depth image does not reach;
 `show` draws them in `color` instead, to see what the device has mapped, and `occlude = false`
-leaves them out.
+leaves them out. The pieces hang from `root` (the scene's root by default), for a scene whose
+space is not the session's.
 
 ## Tests
 

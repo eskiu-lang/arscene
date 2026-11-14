@@ -24,8 +24,11 @@ struct _ArMeshNode {
 }
 
 // The world's mesh in a scene. show draws it in color (to see what was mapped) instead of
-// as an occluder; occlude (on) hides virtual content behind it.
+// as an occluder; occlude (on) hides virtual content behind it. The pieces are children of
+// root (the scene's root unless set before the first frame), so a scene whose space is not
+// the session's puts the session's space in root's transform.
 struct ArWorldMesh {
+    int root;
     bool occlude;
     bool show;
     Vec4 color;
@@ -91,7 +94,7 @@ Result<int, string> ArWorldMesh_frame(*ArWorldMesh self, *Scene scene, *ArFrame 
                     return Err<int, string>(mr.error);
                 }
                 n.mesh = mr.value;
-                n.node = scene.add_object(0, n.mesh, self._occluder);
+                n.node = scene.add_object(self.root, n.mesh, self._occluder);
                 scene.node(n.node).ignore_events = true;
                 scene.node(n.node).casts_shadows = false;
                 List_push(&self._nodes, n);
