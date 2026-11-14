@@ -49,6 +49,7 @@ void ar_native_anchor(int index, *double info) {}
 int ar_native_points(*float out, int max_points) { return 0; }
 int ar_native_light(*double info) { return 0; }
 int ar_native_depth(*int64 info) { return 0; }
+void ar_native_depth_model(string path) {}
 int ar_native_hit_test(*float ray, int targets, *double out, int max_hits) {
     hits_given++;
     out[0] = 2.0;
