@@ -15,7 +15,8 @@ frame needs on the GPU. `ArStage_frame(&scene, frame, width, height)`, called in
   `camera_background`;
 - puts the camera node at the device's pose (under the node's parent, whatever it is) and
   gives it the session's projection (`scene_projection`, `near` 0.02 m and `far` 100 m);
-- with `occlusion` on (the default) and a depth image in the frame (`ArOptions.depth`),
+- with `occlusion` on (the default) and a depth image in the frame (`ArOptions.depth` for
+  the room, `ArOptions.people` for people, both together on LiDAR iPhones),
   uploads it in meters and makes it the scene's `occlusion_depth`, with the transform from the
   view to the picture, so virtual content behind a real surface is hidden;
 - keeps the frame's light estimate in `stage.light`, to scale the scene's lights by.

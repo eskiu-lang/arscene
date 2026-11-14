@@ -37,7 +37,7 @@ for an app:
 ArStage stage = ar_stage(&scene, cam)?;
 ArPlacer placer = ar_placer(&scene, content)?;
 placer.scale = 0.2;
-use_ar_session(ArOptions{horizontal: true, depth: true}, void(*ArFrame frame) {
+use_ar_session(ArOptions{horizontal: true, depth: true, people: true}, void(*ArFrame frame) {
     stage.frame(&scene, frame, width, height)?;
     placer.frame(&scene, frame, (float)width, (float)height)?;
     if (tapped) placer.tap(&scene, frame, tap_x, tap_y, (float)width, (float)height);
