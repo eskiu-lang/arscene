@@ -108,6 +108,8 @@ the platform only knows it from before (ArImageLastKnown) instead of hiding it.
 ArMarkers ar_markers()
 ```
 
+An empty set of markers, keeping last known poses.
+
 ### ArMarkers_add
 
 ```eskiu

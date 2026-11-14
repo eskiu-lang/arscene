@@ -24,6 +24,7 @@ struct ArMarkers {
     fn(int, bool)->void _handler;
 }
 
+// An empty set of markers, keeping last known poses.
 ArMarkers ar_markers() {
     ArMarkers m;
     m.keep_last_known = true;
