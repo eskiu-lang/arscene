@@ -56,6 +56,7 @@ double ar_native_earth_anchor(double lat, double lng, double alt, *float quatern
 double ar_native_earth_resolve(int rooftop, double lat, double lng, double alt, *float quaternion) { return 0.0; }
 int ar_native_job(double job, *double info, *char text, int capacity) { return 3; }
 int ar_native_earth(*double info) { return 0; }
+int ar_native_semantics(*int64 info) { return 0; }
 int ar_native_hit_test(*float ray, int targets, *double out, int max_hits) {
     hits_given++;
     out[0] = 2.0;
