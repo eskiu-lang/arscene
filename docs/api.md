@@ -164,6 +164,7 @@ struct ArPlacer {
     bool shadows;
     bool hide_planes_when_placed;
     int kinds;
+    bool use_depth;
     bool placed;
     bool center_hit;
     int center_kind;
@@ -176,7 +177,8 @@ A placer for node `content`. scale is the content's size once placed; show_plane
 show_reticle and shadows (the shadow-catching floor under the content, which needs a light
 that casts shadows) are on by default; hide_planes_when_placed hides the surfaces after a
 placement. kinds limits placement to planes of those ArPlaneClass values (a bit per class,
-0 for any). After each frame, placed says whether the content is down, center_hit whether
+0 for any); use_depth also places on real surfaces the depth image sees where no plane was
+found (ArOptions.depth). After each frame, placed says whether the content is down, center_hit whether
 the middle of the view meets a surface and center_kind its class; plane is the id of the
 plane the content stands on.
 

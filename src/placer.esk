@@ -25,7 +25,8 @@ struct _ArPlaneView {
 // show_reticle and shadows (the shadow-catching floor under the content, which needs a light
 // that casts shadows) are on by default; hide_planes_when_placed hides the surfaces after a
 // placement. kinds limits placement to planes of those ArPlaneClass values (a bit per class,
-// 0 for any). After each frame, placed says whether the content is down, center_hit whether
+// 0 for any); use_depth also places on real surfaces the depth image sees where no plane was
+// found (ArOptions.depth). After each frame, placed says whether the content is down, center_hit whether
 // the middle of the view meets a surface and center_kind its class; plane is the id of the
 // plane the content stands on.
 struct ArPlacer {
@@ -36,6 +37,7 @@ struct ArPlacer {
     bool shadows;
     bool hide_planes_when_placed;
     int kinds;
+    bool use_depth;
     bool placed;
     bool center_hit;
     int center_kind;
@@ -196,8 +198,9 @@ void ArPlacer_place(*ArPlacer self, *Scene scene, ArMat4 pose, int64 plane) {
 // false when it meets none (of the allowed kinds).
 bool ArPlacer_tap(*ArPlacer self, *Scene scene, *ArFrame frame, float x, float y, float width, float height) {
     ArHit[1] hit;
-    if (frame.hit_test(x, y, width, height, AR_HIT_PLANES, &hit[0], 1) == 0) return false;
-    if (!_arp_kind_ok(self, _arp_kind_of(frame, hit[0].plane))) return false;
+    bool on_plane = frame.hit_test(x, y, width, height, AR_HIT_PLANES, &hit[0], 1) > 0 &&
+        _arp_kind_ok(self, _arp_kind_of(frame, hit[0].plane));
+    if (!on_plane && !(self.use_depth && self.kinds == 0 && frame.depth_hit(x, y, width, height, &hit[0]))) return false;
     Mat4 cam = ar_to_mat4(frame.view()).inverse();
     self._eye = Vec3{cam.m[12], cam.m[13], cam.m[14]};
     ArPlacer_place(self, scene, hit[0].pose, hit[0].plane);

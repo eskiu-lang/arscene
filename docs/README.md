@@ -32,7 +32,8 @@ to face the user, at `scale`; it returns false when the tap meets nothing. After
 the surfaces hide (`hide_planes_when_placed`) and a floor under the content shows its shadows
 on the real one (`shadows`; a light in the scene must cast shadows). `kinds`, a bit per
 `ArPlaneClass` (`1 << ArPlaneTable`), keeps the placement to those surfaces;
-`ArPlacer_place` places at a pose of your own and `ArPlacer_reset` hides the content again.
+`use_depth` lets a tap place on any real surface the depth image sees where no plane was
+found (`ArFrame_depth_hit`); `ArPlacer_place` places at a pose of your own and `ArPlacer_reset` hides the content again.
 
 ## Markers
 
