@@ -10,7 +10,7 @@
 frame needs on the GPU. `ArStage_frame(&scene, frame, width, height)`, called in the
 `use_ar_session` handler with the view's size in pixels:
 
-- draws the camera picture (eskiu-lang/ar's YUV planes, through `<gpu/yuv>`) into a texture
+- draws the camera picture (eskiu-packages/ar's YUV planes, through `<gpu/yuv>`) into a texture
   of the view's size, fitted as the session's projection assumes, and makes it the scene's
   `camera_background`;
 - puts the camera node at the device's pose (under the node's parent, whatever it is) and

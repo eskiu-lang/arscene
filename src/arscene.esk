@@ -1,7 +1,7 @@
-// arscene.esk: augmented reality on eskiu-lang/scene (`<arscene>`).
+// arscene.esk: augmented reality on eskiu-packages/scene (`<arscene>`).
 //
 // The pieces every AR app with a scene writes by hand, as ViroReact's AR scene navigator
-// does them: ArStage takes each frame of an eskiu-lang/ar session into the scene (the camera
+// does them: ArStage takes each frame of an eskiu-packages/ar session into the scene (the camera
 // picture behind it, the device as its camera, the real world's depth hiding what is behind
 // it); ArPlacer shows the surfaces found and puts content where the user taps
 // (ViroARPlaneSelector); ArMarkers keeps content on tracked images (ViroARImageMarker).

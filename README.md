@@ -12,15 +12,15 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/eskiu-lang/arscene/actions/workflows/ci.yml"><img src="https://github.com/eskiu-lang/arscene/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/eskiu-packages/arscene/actions/workflows/ci.yml"><img src="https://github.com/eskiu-packages/arscene/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <img src="https://img.shields.io/badge/version-0.1.0-6448d4" alt="Version 0.1.0">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="License: MIT"></a>
 </p>
 
 ---
 
-`arscene` joins an [ar](https://github.com/eskiu-lang/ar) session to a
-[scene](https://github.com/eskiu-lang/scene), doing what ViroReact's AR scene navigator does
+`arscene` joins an [ar](https://github.com/eskiu-packages/ar) session to a
+[scene](https://github.com/eskiu-packages/scene), doing what ViroReact's AR scene navigator does
 for an app:
 
 - **ArStage.** Each frame: the camera picture behind the scene, the device as the scene's
@@ -55,7 +55,7 @@ use_ar_session(ArOptions{horizontal: true, depth: true, people: true}, void(*ArF
 ## Install
 
 ```bash
-eskiuc add arscene --git https://github.com/eskiu-lang/arscene --rev v0.1.0
+eskiuc add arscene --git https://github.com/eskiu-packages/arscene --rev v0.1.0
 ```
 
 It brings ar and scene.

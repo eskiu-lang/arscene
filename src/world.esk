@@ -1,5 +1,5 @@
 // world.esk: the real world's mesh in the scene (`<arscene/world>`), ViroReact's world mesh:
-// each piece eskiu-lang/ar reconstructs (LiDAR, ArOptions.mesh) as a node of the scene, an
+// each piece eskiu-packages/ar reconstructs (LiDAR, ArOptions.mesh) as a node of the scene, an
 // invisible occluder by default (virtual content goes behind real walls and furniture) or a
 // translucent surface to see what the device has mapped. A piece is rebuilt only when the
 // session updates it.
