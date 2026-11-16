@@ -52,6 +52,10 @@ int ar_native_points(*float out, int max_points) { return 0; }
 int ar_native_light(*double info) { return 0; }
 int ar_native_depth(*int64 info) { return 0; }
 void ar_native_depth_model(string path) {}
+void ar_native_depth_model_tuning(float scale, int fps) {}
+int ar_native_depth_supported() { return 0; }
+int ar_native_semantics_supported() { return 0; }
+int ar_native_supported() { return 0; }
 double ar_native_cloud_host(double anchor, int ttl_days) { return 0.0; }
 double ar_native_cloud_resolve(string cloud_id) { return 0.0; }
 double ar_native_earth_anchor(double lat, double lng, double alt, *float quaternion) { return 0.0; }
