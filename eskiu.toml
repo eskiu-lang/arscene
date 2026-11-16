@@ -1,6 +1,6 @@
 [package]
 name = "arscene"
-version = "0.1.0"
+version = "0.1.1"
 
 [deps]
 ar = { git = "https://github.com/eskiu-packages/ar", rev = "v0.2.1" }

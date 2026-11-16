@@ -4,7 +4,13 @@ All notable changes to this package are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/).
 
-## [0.1.0] - 2026-11-16
+## [0.1.1] - 2026-11-16
+
+### Changed
+
+- The package moved to the eskiu-packages organization; the old URL redirects. Depends on ar 0.2.1, scene 0.2.1, gpu 0.7.1 and ui 0.6.1.
+
+## [0.1.0]
 
 The first release. Needs Eskiu 0.15.1 or newer; brings ar 0.2.0, scene 0.2.0, gpu 0.7.0 and
 ui 0.6.0.
