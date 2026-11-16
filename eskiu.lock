@@ -1,7 +1,7 @@
 # eskiu.lock: written by eskiuc (eskiuc fetch updates it); do not edit.
-ar	git	https://github.com/eskiu-packages/ar	v0.2.0	f15a88352f6aa623a53c336e2328db58343ec5b9
+ar	git	https://github.com/eskiu-packages/ar	v0.2.1	5f9a380592d22d7f005330f05ea3f217d58e34a8
 arscene	root	.
-font	git	https://github.com/eskiu-lang/font	v0.1.0	656a3d0bc678b88c8e57c496408fb63664c64fe1
-gpu	git	https://github.com/eskiu-packages/gpu	v0.7.0	7d9d26d7ce6c30d408cc75e8d19f92037ddb2ddf
-scene	git	https://github.com/eskiu-packages/scene	v0.2.0	88b72cbee2fc6dfc350025a9b1984a6b4238b451
-ui	git	https://github.com/eskiu-packages/ui	v0.6.0	e23fe57f128d7fe989755b107f6b7b92af255141
+font	git	https://github.com/eskiu-packages/font	v0.1.0	656a3d0bc678b88c8e57c496408fb63664c64fe1
+gpu	git	https://github.com/eskiu-packages/gpu	v0.7.1	630a6017fe861db88ae77f234dfc805613d8de03
+scene	git	https://github.com/eskiu-packages/scene	v0.2.1	9d8e35e0c51014da88a33ba7b69a0338bcd02fd0
+ui	git	https://github.com/eskiu-packages/ui	v0.6.1	e06770759ce96d45db7f9f5a08001ec10cfdb30d
