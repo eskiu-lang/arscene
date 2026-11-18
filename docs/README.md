@@ -77,11 +77,29 @@ depth model) as a static triangle body, rebuilt every `every` frames (15) from a
 `ArOptions.objects`, iOS), as ViroReact's `ViroARObjectMarker`: shown at the reference
 object's pose while it is found, hidden otherwise, with the same found and lost handler.
 
+## Anchors
+
+`<arscene/anchors>` keeps content where it was put in the real world. As the session learns
+the room it refines its map, and a node at a fixed position in the world's coordinates then
+shifts against the room. `ar_anchors()`, `ArAnchors_add(&scene, node)` and
+`ArAnchors_frame(&scene, frame, time)` each frame give the node an anchor of the session where
+it is, once tracking is normal, and from then on make the anchor's movement the node's base
+(`SceneNode.base` in eskiu-packages/scene). The node's own position, its animations, drags
+and physics stay in its parent's coordinates; only the session's corrections move it.
+
+A failed try is tried again `retry_seconds` later, up to `max_tries` (1 s and 3 by default; 0
+keeps trying);
+waiting for tracking spends no try. With `reanchor_distance` set, a node moved farther than
+that from its anchor gets a new one where it is, without a jump. A node removed from the
+scene loses its anchor, and `ArAnchors_remove` takes one out of the session; an anchor the
+session drops (a reset) is made again where the node is.
+
 ## Tests
 
 `tests/arscene.esk` runs with no device: frames built by hand and stand-ins for ar's native
 side. The stage draws the picture behind an empty scene, places the camera at the device's
 pose with the session's projection and passes the depth on; the placer draws the plane and
 the ring, places on a tap at its scale, hides the planes and shows the shadow floor, and
-refuses a surface of a kind not allowed; markers follow a found image and hide a lost one.
+refuses a surface of a kind not allowed; markers follow a found image and hide a lost one; anchors wait for normal tracking, move
+their node by the anchor's correction, re-anchor and give up after their tries.
 `python3 -I tools/gen_api.py` regenerates `docs/api.md`.
