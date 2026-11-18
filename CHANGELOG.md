@@ -4,7 +4,7 @@ All notable changes to this package are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.1.2] - 2026-11-18
 
 ### Added
 
@@ -13,7 +13,11 @@ All notable changes to this package are documented here. The format follows
   node's base (scene's `SceneNode.base`), so its position, animations, drags and physics stay
   in its parent's coordinates. Tries, their spacing and re-anchoring by distance are settings.
 
-## [0.1.1] - 2026-11-16
+### Changed
+
+- Depends on ar 0.2.2, scene 0.2.2 and ui 0.6.2.
+
+## [0.1.1]
 
 ### Changed
 
