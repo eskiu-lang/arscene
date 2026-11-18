@@ -15,6 +15,7 @@ import <arscene/placer>;
 import <arscene/markers>;
 import <arscene/world>;
 import <arscene/collide>;
+import <arscene/anchors>;
 import <scene/physics>;
 
 int fails = 0;
@@ -81,8 +82,16 @@ int ar_native_hit_test(*float ray, int targets, *double out, int max_hits) {
     for (k in 0..16) out[3 + k] = (double)hit_pose.m[k];
     return 1;
 }
-double ar_native_anchor_add(*float pose, double plane) { return 1.0; }
-void ar_native_anchor_remove(double id) {}
+// anchors: ids from 1 on, or none while anchor_fails; the last one removed
+bool anchor_fails = false;
+int next_anchor = 0;
+double removed_anchor = 0.0;
+double ar_native_anchor_add(*float pose, double plane) {
+    if (anchor_fails) return 0.0;
+    next_anchor++;
+    return (double)next_anchor;
+}
+void ar_native_anchor_remove(double id) { removed_anchor = id; }
 void ar_native_images(int count, int tracked) {}
 void ar_native_image_add(int index, *uint8 gray, int width, int height, string path, double physical_width) {}
 int ar_native_image_state(int index) { return ArImageReady; }
@@ -327,6 +336,72 @@ Result<int, string> run() {
     for (i in 1..121) dw.update(&scene, (double)i / 60.0);
     check("a ball lands on the depth", near(scene.node(drop).position.y, 0.05, 0.02));
     dw.free();
+
+    // anchors: none until tracking is normal; then the anchor's movement moves the node, whose
+    // own position stays where the app put it
+    next_anchor = 0;
+    int placed = scene.add_node(0, "placed");
+    scene.node(placed).position = Vec3{0.0, 0.0, -2.0};
+    ArAnchors anchors = ar_anchors();
+    anchors.add(&scene, placed);
+    ArFrame af;
+    af.tracking = (int)ArTrackingLimited;
+    anchors.frame(&scene, &af, 0.0);
+    check("no anchor while tracking is limited", !anchors.anchored(placed) && next_anchor == 0);
+    af.tracking = (int)ArTrackingNormal;
+    anchors.frame(&scene, &af, 0.1);
+    check("an anchor once tracking is normal", anchors.anchored(placed) && next_anchor == 1);
+    ArAnchor moved_anchor;
+    moved_anchor.id = 1;
+    moved_anchor.tracking = (int)ArTrackingNormal;
+    moved_anchor.pose = translation(0.1, 0.0, -2.0);
+    af.anchors = &moved_anchor;
+    af.anchor_count = 1;
+    anchors.frame(&scene, &af, 0.2);
+    scene.update();
+    Mat4 aw = scene.node(placed).world;
+    check("the anchor's correction moves the node", near(aw.m[12], 0.1, 1e-4) && near(aw.m[14], -2.0, 1e-4));
+    check("the node's own position stays", near(scene.node(placed).position.x, 0.0, 1e-6) && near(scene.node(placed).position.z, -2.0, 1e-6));
+    // re-anchoring: moved 5 m away from its anchor, the node gets a new one there
+    anchors.reanchor_distance = 3.5;
+    scene.node(placed).position = Vec3{0.0, 0.0, -7.0};
+    anchors.frame(&scene, &af, 0.3);
+    check("moved far: the anchor is dropped", removed_anchor == 1.0 && !anchors.anchored(placed));
+    af.anchor_count = 0;
+    anchors.frame(&scene, &af, 0.4);
+    check("and a new one is made", anchors.anchored(placed) && next_anchor == 2);
+    scene.update();
+    check("re-anchoring does not move it", near(scene.node(placed).world.m[12], 0.1, 1e-4));
+    // the session lists the new anchor where it was made
+    moved_anchor.id = 2;
+    moved_anchor.pose = translation(0.1, 0.0, -7.0);
+    af.anchor_count = 1;
+    // failed tries: a second apart, three of them, then the node is left alone
+    int other = scene.add_node(0, "other");
+    anchor_fails = true;
+    anchors.add(&scene, other);
+    anchors.frame(&scene, &af, 1.0);
+    anchors.frame(&scene, &af, 1.5);
+    anchors.frame(&scene, &af, 2.0);
+    anchors.frame(&scene, &af, 3.0);
+    anchors.frame(&scene, &af, 4.0);
+    anchor_fails = false;
+    anchors.frame(&scene, &af, 5.0);
+    check("three failed tries leave the node unanchored", !anchors.anchored(other));
+    // with max_tries 0 it keeps trying
+    anchors.remove(&scene, other);
+    anchors.max_tries = 0;
+    anchor_fails = true;
+    anchors.add(&scene, other);
+    for (k in 0..5) anchors.frame(&scene, &af, 6.0 + (double)k);
+    anchor_fails = false;
+    anchors.frame(&scene, &af, 11.0);
+    check("max_tries 0 keeps trying until it works", anchors.anchored(other));
+    anchors.remove(&scene, placed);
+    check("removing takes the anchor out of the session", removed_anchor == 2.0 && !anchors.anchored(placed));
+    anchors.free();
+    scene.remove(placed);
+    scene.remove(other);
     scene.camera_background = 0;
     scene.occlusion_depth = 0;
     return Ok<int, string>(0);

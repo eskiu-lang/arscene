@@ -1,0 +1,152 @@
+// anchors.esk: content kept where it was put in the real world (`<arscene/anchors>`). The
+// session refines its map as it learns the room, and a node at a fixed position in the
+// world's coordinates then shifts against the room; an anchored node does not. Each node gets
+// an anchor of the session at its place once tracking is normal, and from then on the
+// anchor's movement since then is the node's base (SceneNode.base): the node's own position,
+// its animations, drags and physics stay in its parent's coordinates, and only the session's
+// corrections move it.
+//
+//     ArAnchors anchors = ar_anchors();
+//     anchors.add(&scene, content);
+//     use_ar_session(ArOptions{}, void(*ArFrame frame) {
+//         anchors.frame(&scene, frame, time);
+//     });
+
+import <mem>;
+import <list>;
+import <gpu/math>;
+import <ar>;
+import <scene>;
+import <arscene>;
+
+struct _ArAnchored {
+    int node;
+    // the session's anchor (0 while there is none), its pose when it was made, and the node's
+    // base then
+    int64 anchor;
+    Mat4 start;
+    Mat4 base;
+    int tries;
+    double retry_at;
+    bool given_up;
+}
+
+// Nodes anchored to the real world. A failed try (the session could not make an anchor) is
+// tried again retry_seconds later, up to max_tries (0: until it works); then the node is left
+// unanchored. Waiting
+// for tracking to be normal spends no try. A node moved more than reanchor_distance meters
+// away from its anchor gets a new anchor where it is (0: it keeps the first one).
+struct ArAnchors {
+    List<_ArAnchored> list;
+    int max_tries;
+    double retry_seconds;
+    float reanchor_distance;
+}
+
+// An empty set: three tries a second apart, no re-anchoring.
+ArAnchors ar_anchors() {
+    ArAnchors a;
+    a.max_tries = 3;
+    a.retry_seconds = 1.0;
+    return a;
+}
+
+// Anchors node where it is once tracking is normal (ArAnchors_frame makes the anchor).
+void ArAnchors_add(*ArAnchors self, *Scene scene, int node) {
+    for (i in 0..self.list.size) {
+        if (self.list.data[i].node == node) return;
+    }
+    _ArAnchored a;
+    a.node = node;
+    List_push(&self.list, a);
+}
+
+// Stops anchoring node and removes its anchor from the session. The node keeps the base it
+// has (it does not jump); Scene_clear_base removes that.
+void ArAnchors_remove(*ArAnchors self, *Scene scene, int node) {
+    for (i in 0..self.list.size) {
+        if (self.list.data[i].node != node) continue;
+        if (self.list.data[i].anchor != 0) ar_anchor_remove(self.list.data[i].anchor);
+        List_remove(&self.list, i);
+        return;
+    }
+}
+
+// True when node has an anchor in the session.
+bool ArAnchors_anchored(*ArAnchors self, int node) {
+    for (i in 0..self.list.size) {
+        if (self.list.data[i].node == node) return self.list.data[i].anchor != 0;
+    }
+    return false;
+}
+
+// The anchor id of the session's anchor in frame, or null.
+*ArAnchor _ar_anchor_in(*ArFrame f, int64 id) {
+    for (i in 0..f.anchor_count) {
+        if (f.anchors[i].id == id) return &f.anchors[i];
+    }
+    return null;
+}
+
+// Each frame: makes the anchors not made yet (tracking normal), moves each anchored node by
+// its anchor's movement since it was made, and re-anchors a node that moved far from its
+// anchor. A node removed from the scene loses its anchor. time is seconds on any clock that
+// only goes forward.
+void ArAnchors_frame(*ArAnchors self, *Scene scene, *ArFrame f, double time) {
+    Scene_update(scene);
+    int i = 0;
+    while (i < self.list.size) {
+        *_ArAnchored a = &self.list.data[i];
+        *SceneNode n = Scene_node(scene, a.node);
+        if (n == null || !n.alive) {
+            if (a.anchor != 0) ar_anchor_remove(a.anchor);
+            List_remove(&self.list, i);
+            continue;
+        }
+        i++;
+        Vec3 at = Vec3{n.world.m[12], n.world.m[13], n.world.m[14]};
+        if (a.anchor == 0) {
+            if (a.given_up || f.tracking != (int)ArTrackingNormal || time < a.retry_at) continue;
+            Mat4 pose = mat4_translate(at);
+            int64 id = ar_anchor_add(*(*ArMat4)&pose);
+            if (id == 0) {
+                a.tries++;
+                a.retry_at = time + self.retry_seconds;
+                if (self.max_tries > 0 && a.tries >= self.max_tries) a.given_up = true;
+                continue;
+            }
+            a.anchor = id;
+            a.start = pose;
+            a.base = n.has_base ? n.base : mat4_identity();
+            continue;
+        }
+        *ArAnchor found = _ar_anchor_in(f, a.anchor);
+        if (found == null) {
+            // the session dropped it (a reset): anchored again where the node is now
+            a.anchor = 0;
+            a.tries = 0;
+            continue;
+        }
+        if (found.tracking != (int)ArTrackingNormal) continue;
+        // the anchor's movement is in the world; the base is in the parent's space
+        Mat4 now = ar_to_mat4(found.pose);
+        Mat4 parent = n.parent >= 0 ? Scene_node(scene, n.parent).world : mat4_identity();
+        Scene_set_base(scene, a.node, parent.inverse() * now * a.start.inverse() * parent * a.base);
+        if (self.reanchor_distance > 0.0) {
+            Vec3 anchor_at = Vec3{now.m[12], now.m[13], now.m[14]};
+            if ((at - anchor_at).length() > self.reanchor_distance) {
+                ar_anchor_remove(a.anchor);
+                a.anchor = 0;
+                a.tries = 0;
+            }
+        }
+    }
+}
+
+// Removes every anchor from the session and forgets the nodes.
+void ArAnchors_free(*ArAnchors self) {
+    for (i in 0..self.list.size) {
+        if (self.list.data[i].anchor != 0) ar_anchor_remove(self.list.data[i].anchor);
+    }
+    List_free(&self.list);
+}
