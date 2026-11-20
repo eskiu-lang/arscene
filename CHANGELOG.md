@@ -4,7 +4,13 @@ All notable changes to this package are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/).
 
-## [0.1.2] - 2026-11-18
+## [0.1.3] - 2026-11-20
+
+### Changed
+
+- Depends on ar 0.2.3 and ui 0.7.0.
+
+## [0.1.2]
 
 ### Added
 
