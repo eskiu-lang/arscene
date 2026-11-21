@@ -4,4 +4,4 @@ arscene	root	.
 font	git	https://github.com/eskiu-packages/font	v0.1.0	656a3d0bc678b88c8e57c496408fb63664c64fe1
 gpu	git	https://github.com/eskiu-packages/gpu	v0.7.1	630a6017fe861db88ae77f234dfc805613d8de03
 scene	git	https://github.com/eskiu-packages/scene	v0.2.2	3514151d28b4a5738873e324dd0018fcaa808acd
-ui	git	https://github.com/eskiu-packages/ui	v0.7.0	980f4f8bf583f0caffe0bc49c0cf6098da879459
+ui	git	https://github.com/eskiu-packages/ui	v0.7.0	7af8ea0a94ce52025fb45d8a616532b16128b313
